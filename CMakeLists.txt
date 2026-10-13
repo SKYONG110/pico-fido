@@ -63,6 +63,14 @@ configure_bool_option(
     "OTP Application: \t\t disabled"
 )
 
+option(DISABLE_LED "Disable all LED functionality (no-LED build: no LED is ever initialized or driven)" ON)
+configure_bool_option(
+    DISABLE_LED
+    ""
+    "No-LED build: \t\t enabled (all LED output disabled)"
+    "No-LED build: \t\t disabled"
+)
+
 if(FORBID_DISABLE_AUV)
     add_compile_definitions(FORBID_DISABLE_AUV=1)
 endif()
@@ -136,9 +144,21 @@ if(ENABLE_OTP_APP)
     )
 endif()
 
+if(DISABLE_LED)
+    # No-LED support: provides __wrap_led_init() (see src/fido/no_led.c),
+    # linked via -Wl,--wrap,led_init below so the SDK never initializes or
+    # drives any LED hardware.
+    list(APPEND SOURCES
+        ${CMAKE_CURRENT_LIST_DIR}/src/fido/no_led.c
+    )
+endif()
+
 SET_VERSION(ver_major ver_minor "${CMAKE_CURRENT_LIST_DIR}/src/fido/version.h")
 if(ESP_PLATFORM)
     project(pico_fido)
+    if(DISABLE_LED)
+        target_link_options(pico_fido.elf PRIVATE "LINKER:--wrap,led_init")
+    endif()
 endif()
 
 set(INCLUDES ${INCLUDES}
@@ -148,6 +168,12 @@ set(INCLUDES ${INCLUDES}
 if(NOT ESP_PLATFORM)
     target_sources(pico_fido PUBLIC ${SOURCES})
     target_include_directories(pico_fido PUBLIC ${INCLUDES})
+
+    if(DISABLE_LED)
+        # Redirect every led_init() call to __wrap_led_init() in
+        # src/fido/no_led.c so no LED hardware is ever initialized/driven.
+        target_link_options(pico_fido PRIVATE "LINKER:--wrap,led_init")
+    endif()
 
     set(COMMON_COMPILE_OPTIONS
         -Wall
