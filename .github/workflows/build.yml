@@ -1,0 +1,37 @@
+name: Build ESP32-S3 PicoKey No LED
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container:
+      image: espressif/idf:v5.5.1
+    steps:
+      - name: Checkout with submodules
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Patch LED (Idle to OFF)
+        run: |
+          sed -i 's/MODE_MOUNTED = .*,/MODE_MOUNTED = MODE_ALWAYS_OFF,/g' pico-keys-sdk/src/led/led.h
+          echo "=== Patched LED setting ==="
+          grep "MODE_MOUNTED" pico-keys-sdk/src/led/led.h
+
+      - name: Build for ESP32-S3
+        run: |
+          git config --global --add safe.directory '*'
+          idf.py set-target esp32s3
+          idf.py all
+          mkdir -p release
+          cd build
+          esptool.py --chip ESP32-S3 merge_bin -o ../release/pico_fido_esp32s3_no_led.bin @flash_args
+
+      - name: Upload Firmware Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pico_fido_esp32s3_no_led
+          path: release/pico_fido_esp32s3_no_led.bin
